@@ -6,6 +6,13 @@ using Microsoft.eShopWeb.ApplicationCore.Entities.BasketAggregate;
 using Microsoft.eShopWeb.ApplicationCore.Entities.OrderAggregate;
 using Microsoft.eShopWeb.ApplicationCore.Interfaces;
 using Microsoft.eShopWeb.ApplicationCore.Specifications;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using System.Net.Http;
+using Newtonsoft.Json;
+using System.Text;
 
 namespace Microsoft.eShopWeb.ApplicationCore.Services;
 
@@ -15,6 +22,8 @@ public class OrderService : IOrderService
     private readonly IUriComposer _uriComposer;
     private readonly IRepository<Basket> _basketRepository;
     private readonly IRepository<CatalogItem> _itemRepository;
+
+    private readonly string url = "https://eshoponweb3.azurewebsites.net/api/HttpTrigger1?code=pXyvn4I9-XbKhU6RmVXgKAWDNQgL5CC3BV-0blGnXi-cAzFuTBZ-cg==";
 
     public OrderService(IRepository<Basket> basketRepository,
         IRepository<CatalogItem> itemRepository,
@@ -47,6 +56,12 @@ public class OrderService : IOrderService
         }).ToList();
 
         var order = new Order(basket.BuyerId, shippingAddress, items);
+
+        HttpClient client = new HttpClient();
+        var json = JsonConvert.SerializeObject(order);
+        var data = new StringContent(json, Encoding.UTF8, "application/json");
+        var response = await client.PostAsync(url, data);
+        var text = await response.Content.ReadAsStringAsync();
 
         await _orderRepository.AddAsync(order);
     }
