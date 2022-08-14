@@ -13,6 +13,8 @@ using Microsoft.Extensions.Logging;
 using System.Net.Http;
 using Newtonsoft.Json;
 using System.Text;
+using Microsoft.Azure.ServiceBus;
+using System.Threading;
 
 namespace Microsoft.eShopWeb.ApplicationCore.Services;
 
@@ -23,7 +25,10 @@ public class OrderService : IOrderService
     private readonly IRepository<Basket> _basketRepository;
     private readonly IRepository<CatalogItem> _itemRepository;
 
-    private readonly string url = "https://eshoponweb3.azurewebsites.net/api/HttpTrigger1?code=pXyvn4I9-XbKhU6RmVXgKAWDNQgL5CC3BV-0blGnXi-cAzFuTBZ-cg==";
+    private readonly string url = "https://eshoponwebfunction.azurewebsites.net/api/OrderItemsReserver?code=1LvrCYD0kgbMMnXOl2czFddz8pNnPazYQhWSotzmm4mXAzFu_lc1yg==";
+    private readonly string serviceBusConnectionString = "Endpoint=sb://eshoponwebservicebus.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SDw4M6tcGNm0snK0vPVYHuD1KgkE7aA00//keMMfWGM=";
+    private readonly string queueName = "queue1";
+    static IQueueClient queueClient;
 
     public OrderService(IRepository<Basket> basketRepository,
         IRepository<CatalogItem> itemRepository,
@@ -59,8 +64,28 @@ public class OrderService : IOrderService
 
         HttpClient client = new HttpClient();
         var json = JsonConvert.SerializeObject(order);
+        var message = new Message(Encoding.UTF8.GetBytes(json.ToString()));
+        queueClient = new QueueClient(serviceBusConnectionString, queueName);
         var data = new StringContent(json, Encoding.UTF8, "application/json");
+        await queueClient.SendAsync(message);
+        await queueClient.CloseAsync();
         var response = await client.PostAsync(url, data);
+        var statusCode = response.StatusCode.ToString();
+
+        if(statusCode == "Internal Server Error")
+        {
+            var jsonData = JsonConvert.SerializeObject(new
+            {
+                email = "liliia_khimiak@epam.com",
+                due = "4/1/2020",
+                task = "My new task!"
+            });
+            HttpResponseMessage result = await client.PostAsync(
+           "https://eshoponwebloggicapp.azurewebsites.net:443/api/mYlOGGICaPP/triggers/manual/invoke?api-version=2022-05-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=FPPNzH-9yboFCE64YyiIzztUVXs7ANe7udfUVNvYDPs",
+           new StringContent(jsonData, Encoding.UTF8, "application/json"));
+        }
+       
+
         var text = await response.Content.ReadAsStringAsync();
 
         await _orderRepository.AddAsync(order);
