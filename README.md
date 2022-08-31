@@ -114,3 +114,171 @@ You can also run the applications by using the instructions located in their `Do
 We have some great contributions from the community, and while these aren't maintained by Microsoft we still want to highlight them.
 
 [eShopOnWeb VB.NET](https://github.com/VBAndCs/eShopOnWeb_VB.NET) by Mohammad Hamdy Ghanem
+
+## HttpTrigger in order to read queue from Servis Bus, write data to Blob Storage and invoke Logic App
+
+run.cs
+
+```
+#r "Newtonsoft.Json"
+
+using System.Net;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
+using Newtonsoft.Json;
+using System;
+using System.Text;
+using System.Net.Http;
+using System.Net.Http.Headers;
+
+public static async Task Run(
+    string myQueueItem, 
+    IAsyncCollector<string> queueItem,
+    Stream blob,
+    ILogger log
+    )
+{
+    log.LogInformation("C# HTTP trigger function processed a request.");
+    var requestBody = JsonConvert.DeserializeObject<Order>(myQueueItem);
+    var client = new HttpClient();
+
+if (!string.IsNullOrEmpty(requestBody.BuyerId) && requestBody.BuyerId.Equals("demouser@microsoft.com"))
+{
+    var jsonData = JsonConvert.SerializeObject(new
+    {
+            email = "liliia00khimiak@gmail.com",
+            message = "Order for "+ requestBody.BuyerId +" is failed",
+            task = "Your order is failed"
+    });
+    HttpResponseMessage result = await client.PostAsync(
+   "https://eshoponwebliliialogicapp.azurewebsites.net:443/api/MyLoggicApp/triggers/manual/invoke?api-version=2022-05-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=8FvwbTvT0sDtIhX9EbluVG1htmtaERJIdKmxp8FrzbY",
+   new StringContent(jsonData, Encoding.UTF8, "application/json"));
+    
+    log.LogInformation($"Result of request to Loggic App: {result.StatusCode}");
+    return;
+}
+    var item = JsonConvert.SerializeObject(requestBody);
+    await queueItem.AddAsync(item);
+    StreamWriter sr = new StreamWriter(blob);
+    await sr.WriteAsync(item);
+    sr.Flush();
+
+     log.LogInformation(string.IsNullOrEmpty(requestBody.ToString())
+        ? "This HTTP triggered function executed successfully. But request body is empty."
+                : $"This HTTP triggered function executed successfully.");
+}
+
+public class Order
+{
+    public string Id{ get; set; }
+    public string BuyerId { get; set; }
+    public DateTime OrderDate { get; set; }
+    public IList<OrderItem> OrderItems { get; set; }
+}
+
+public class OrderItem
+{
+    public CatalogItemOrdered ItemOrdered { get; private set; }
+    public decimal UnitPrice { get; private set; }
+    public int Units { get; private set; } 
+}
+
+public class CatalogItemOrdered
+{
+    public string ProductName { get; private set; } 
+}
+```
+
+function.json
+
+```
+{
+  "bindings": [
+    {
+      "name": "myQueueItem",
+      "type": "serviceBusTrigger",
+      "direction": "in",
+      "queueName": "myqueue",
+      "connection": "eShopOnWebLiliia_RootManageSharedAccessKey_SERVICEBUS"
+    },
+    {
+      "name": "$return",
+      "type": "http",
+      "direction": "out"
+    },
+    {
+      "type": "queue",
+      "name": "queueItem",
+      "queueName": "demoqueue",
+      "connection": "AzureWebJobsStorage",
+      "direction": "out"
+    },
+    {
+      "name": "blob",
+      "type": "blob",
+      "path": "democontainer/{rand-guid}.txt",
+      "connection": "AzureWebJobsStorage",
+      "direction": "out"
+    }
+  ],
+  "disabled": false
+}
+```
+
+## HttpTrigger in order to write data to CosmosDB
+
+run.cs
+
+```
+#r "Newtonsoft.Json"
+
+using System.Net;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
+using Newtonsoft.Json;
+
+public static IActionResult Run(HttpRequest req, out object outputDocument, ILogger log)
+{
+log.LogInformation("C# HTTP trigger function processed a request.");
+
+string requestBody = new StreamReader(req.Body).ReadToEnd();
+
+outputDocument = requestBody;
+
+return requestBody != null
+? (ActionResult)new OkObjectResult($"Hello")
+: new BadRequestObjectResult("Please pass a name on the query string or in the request body");
+}
+```
+
+function.json
+
+```
+{
+  "bindings": [
+    {
+      "authLevel": "function",
+      "name": "req",
+      "type": "httpTrigger",
+      "direction": "in",
+      "methods": [
+        "get",
+        "post"
+      ]
+    },
+    {
+      "name": "$return",
+      "type": "http",
+      "direction": "out"
+    },
+    {
+      "name": "outputDocument",
+      "direction": "out",
+      "type": "cosmosDB",
+      "connectionStringSetting": "eshoponwebliliia_DOCUMENTDB",
+      "databaseName": "eShopOnWebDB",
+      "collectionName": "mydata"
+    }
+  ]
+}
+```
